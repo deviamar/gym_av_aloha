@@ -16,21 +16,32 @@ Gym environment for AV-ALOHA simulation experiments.
 
 ## Installation
 
-Clone the repository and install the package in editable mode:
+The quickest path is to recreate the environment from the pinned export, which
+already contains every dependency described below:
 
 ```bash
-git clone https://github.com/Soltanilara/gym_av_aloha.git 
-pip install -e ./gym_av_aloha
+git clone https://github.com/deviamar/gym_av_aloha.git
+cd gym_av_aloha
+conda env create -f aloha_env.yml
+conda activate aloha
+pip install -e .
 ```
 
-Install additional dependencies:
+Note that `aloha_env.yml` pins `torch 2.9.0+cu128` and the matching
+`nvidia-*-cu12` wheels, so it assumes a CUDA 12.8-capable GPU. On other
+hardware, relax those pins or install the dependencies manually:
 
 ```bash
+pip install -e .
 pip install asyncio numba google-cloud-firestore
 pip install lerobot==0.4.4
 pip install git+https://github.com/deviamar/aiortc.git@9a968df30b9f808ace1f2d8e53600e8b312e0874
 conda install -c conda-forge "ffmpeg=7.*"   # required by torchcodec
 ```
+
+Install the aiortc fork from the git URL above rather than from PyPI. PyPI's
+`aiortc==1.15.0` is upstream and omits the RTP metadata patch, which makes
+gaze/frame alignment fail silently rather than raise an error.
 
 `lerobot >=0.3` writes datasets in the **v3.0** format, which is what the
 current Hugging Face dataset viewer expects. It requires `av >=15`, while the
@@ -46,10 +57,26 @@ the system ffmpeg on Ubuntu 20.04 is too old, hence the conda-forge install.
 
 ## Configuration
 
-Add the following files to `gym_av_aloha/vr/`:
+Two credential files are required, and neither is in this repository — they
+hold live secrets and are deliberately gitignored. Obtain them from a project
+maintainer, or generate your own, and place them in `gym_av_aloha/vr/`:
 
-* `serviceAccountKey.json` (for Firebase authentication)
-* `signalingSettings.json` (for WebRTC signaling configuration)
+* `serviceAccountKey.json` — Firebase service account key, used to authenticate
+  against the Firestore instance that brokers WebRTC signaling.
+* `signalingSettings.json` — robot ID, password, and TURN server address.
+
+## What this repository does not provide
+
+The simulation and dataset pipeline are fully reproducible from the steps
+above, but teleoperation additionally depends on:
+
+* **The Quest headset application.** The operator views the stereo cameras and
+  sends controller, head and gaze data from a Unity app that is not versioned
+  here. Without it there is no teleoperation loop at all — `record_sim_episodes.py`
+  will connect to signaling and then wait forever for an answer.
+* **The credentials above**, which cannot be committed.
+
+Both are needed before any data collection can run.
 
 ## Upgrading older datasets to v3.0
 
@@ -89,7 +116,24 @@ Run the recording script:
 python record_sim_episodes.py \
     --env_name hook-package-v1 \
     --num-episodes 100 \
-    --repo-id iantc104/av_aloha_sim_hook_package \
+    --repo-id <user>/av_aloha_sim_hook_package \
     --root outputs \
     --task "hook package"
 ```
+
+`--task` is only needed for environments offering more than one prompt (of the
+list above, just `color-cubes-v1`); every other environment selects its single
+task automatically.
+
+Collection runs in two phases. Episodes are first teleoperated and written to
+`outputs/trajectories/<repo-id>/episode_*.pkl`, and only then replayed through
+the environment to render all six cameras and build the dataset. The second
+phase is slow and does not involve the headset. If it fails, the `.pkl` files
+survive, so a re-run does not require redoing the teleoperation.
+
+`--num-episodes N` records N fresh episodes, deleting previously recorded ones
+after asking for confirmation. Use `--resume` to keep them and treat N as a
+total to reach instead, or `--force` to skip the confirmation in scripts.
+
+The dataset is pushed to the Hub automatically when the second phase finishes,
+replacing whatever `--repo-id` currently points at.
