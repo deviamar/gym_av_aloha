@@ -9,11 +9,13 @@ from gym_av_aloha.utils.dataset_utils import interpolate_data
 from gym_av_aloha.scripts.teleoperate import TeleopEnv
 from gym_av_aloha.env.sim_config import SIM_DT
 
-from lerobot.common.datasets.lerobot_dataset import LeRobotDataset
+from lerobot.datasets.lerobot_dataset import LeRobotDataset
 
 import time
 import os
 import pickle
+import shutil
+import sys
 from tqdm import tqdm
 import glob
 from termcolor import colored
@@ -174,6 +176,56 @@ def combine_data(data, eye_data):
         frame['right_eye'] = aligned_right_eye[i]
     return data
 
+def prepare_output_dirs(root, repo_id, num_episodes, resume, force):
+    """Clear stale output and return the episode index to start collecting from.
+
+    By default `--num-episodes N` means N freshly recorded episodes, so any
+    previously recorded trajectories are removed first. `--resume` keeps them
+    and treats N as a total to reach instead.
+
+    Runs before the headset connects, so a wrong answer costs nothing.
+    """
+    traj_save_dir = os.path.join(root, 'trajectories', repo_id)
+    dataset_dir = os.path.join(root, repo_id)
+    os.makedirs(traj_save_dir, exist_ok=True)
+    existing = sorted(glob.glob(os.path.join(traj_save_dir, 'episode_*.pkl')))
+
+    if resume:
+        start_idx = len(existing)
+        if existing:
+            print(colored(f"Resuming: {len(existing)} episode(s) already in {traj_save_dir}.", 'yellow'))
+        if start_idx >= num_episodes:
+            print(colored(
+                f"Nothing to collect: --num-episodes is {num_episodes} but {start_idx} episode(s) already "
+                f"exist. Raise --num-episodes to record more, or drop --resume to start over.", 'yellow'))
+    else:
+        if existing:
+            print(colored(f"{len(existing)} previously recorded episode(s) in {traj_save_dir}:", 'yellow'))
+            for path in existing:
+                print(f"    {os.path.basename(path)}")
+            print(colored("Starting from scratch will DELETE them. Use --resume to keep and append.", 'yellow'))
+            if not force:
+                if not sys.stdin.isatty():
+                    print(colored("Refusing to delete without confirmation: no terminal to ask on. "
+                                  "Re-run with --force to delete, or --resume to append.", 'red'))
+                    sys.exit(1)
+                if input("Delete them and start from scratch? [y/N] ").strip().lower() != 'y':
+                    print(colored("Aborted. Nothing was deleted.", 'red'))
+                    sys.exit(1)
+            for path in existing:
+                os.remove(path)
+            print(colored(f"Deleted {len(existing)} episode file(s).", 'yellow'))
+        start_idx = 0
+
+    # The dataset is always rebuilt from scratch out of the .pkl files, and
+    # LeRobotDataset.create() refuses to write into an existing directory.
+    if os.path.exists(dataset_dir):
+        print(colored(f"Removing previously built dataset at {dataset_dir} (rebuilt from the .pkl files).", 'yellow'))
+        shutil.rmtree(dataset_dir)
+
+    return start_idx
+
+
 def collect_data(args):
 
     num_episodes = args["num_episodes"]
@@ -181,6 +233,8 @@ def collect_data(args):
     repo_id = args["repo_id"]
     root = args["root"]
     task = args["task"]
+
+    start_idx = prepare_output_dirs(root, repo_id, num_episodes, args["resume"], args["force"])
 
     headset = WebRTCHeadset()
     headset.run_in_thread()
@@ -199,11 +253,11 @@ def collect_data(args):
         assert task in env.prompts, \
             f"Task '{task}' is not in the list of available tasks: {env.prompts}. Please choose a valid task."
 
-    # init save dir for trajectories
     traj_save_dir = os.path.join(root, 'trajectories', repo_id)
-    os.makedirs(traj_save_dir, exist_ok=True)
-    episode_idx = len(glob.glob(os.path.join(traj_save_dir, 'episode_*.pkl')))
-    print(colored(f"Collecting {num_episodes} episodes for task '{task}' in environment '{env_name}'", 'green'))
+    episode_idx = start_idx
+    print(colored(
+        f"Collecting {num_episodes - episode_idx} episodes ({episode_idx} to {num_episodes - 1}) "
+        f"for task '{task}' in environment '{env_name}'", 'green'))
     while episode_idx < num_episodes:
         # run the episode
         data, eye_data, task, ok = run_episode(env, headset, task, episode_idx)
@@ -325,7 +379,7 @@ def collect_data(args):
             break
         # get the episode index
         episode_idx = dataset.num_episodes
-        # open
+        # openon
         episode_path = os.path.join(root, 'trajectories', repo_id, f'episode_{episode_idx}.pkl')
         with open(episode_path, 'rb') as f:
             filedata = pickle.load(f)
@@ -342,6 +396,9 @@ def collect_data(args):
             dataset.add_frame(f)
         dataset.save_episode()
 
+    # v3.0 buffers metadata and video encoding, so flush before pushing.
+    dataset.finalize()
+
     dataset.push_to_hub(
         private=False,
     )
@@ -351,10 +408,15 @@ if __name__ == "__main__":
     # Parse command line arguments
     parser = argparse.ArgumentParser(description="Record simulation episodes for AV Aloha.")
     parser.add_argument("--num-episodes", type=int, default=1, help="Number of episodes to record.")
-    parser.add_argument("--env_name", type=str, default="thread-needle-v1", help="Environment task to run.")
-    parser.add_argument("--repo-id", type=str, default="iantc104/av_aloha_sim_peg_insertion_test", help="Repository ID for the dataset.")
+    parser.add_argument("--env_name", type=str, default="pour-test-tube-v1", help="Environment task to run.")
+    parser.add_argument("--repo-id", type=str, default="deviamar/av_aloha", help="Repository ID for the dataset.")
     parser.add_argument("--root", type=str, default="outputs", help="Root directory for the dataset.")
     parser.add_argument("--task", type=str, default="pick red cube", help="Task name for the dataset.")
+    parser.add_argument("--resume", action="store_true",
+                        help="Keep previously recorded episodes and append to them, treating --num-episodes "
+                             "as a total. By default collection starts from scratch.")
+    parser.add_argument("--force", action="store_true",
+                        help="Delete previously recorded episodes without asking for confirmation.")
     args = parser.parse_args()
     args_dict = vars(args)
     collect_data(args_dict)

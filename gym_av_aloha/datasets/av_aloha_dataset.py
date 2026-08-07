@@ -5,21 +5,25 @@ import numpy as np
 from typing import Callable
 import gym_av_aloha
 from gym_av_aloha.common.replay_buffer import ReplayBuffer
-from lerobot.common.datasets.lerobot_dataset import LeRobotDatasetMetadata
-from lerobot.common.datasets.utils import (
+from lerobot.datasets.utils import (
     check_delta_timestamps,
     get_delta_indices,
-    get_episode_data_index,
-    check_timestamps_sync,
 )
-from lerobot.common.datasets.lerobot_dataset import (
+from lerobot.datasets.lerobot_dataset import (
     LeRobotDataset,
     LeRobotDatasetMetadata,
+)
+from gym_av_aloha.datasets.lerobot_compat import (
+    get_episode_data_index,
+    get_lerobot_episode_data_index,
+    check_timestamps_sync,
+    load_episodes_stats,
+    get_task_strings,
 )
 from torch.utils.data import DataLoader, Subset
 from torchvision.transforms import Resize
 from tqdm import tqdm
-from lerobot.common.datasets.compute_stats import aggregate_stats
+from lerobot.datasets.compute_stats import aggregate_stats
 import shutil
 import json
 
@@ -100,14 +104,15 @@ def create_av_aloha_dataset_from_lerobot(
     # stats
     episodes_stats = []
     for dataset in datasets:
+        all_stats = load_episodes_stats(dataset.root)
         ep = dataset.episodes if dataset.episodes else range(dataset.num_episodes)
         for ep_idx in ep:
-            episodes_stats.append({k: v for k, v in dataset.meta.episodes_stats[ep_idx].items() if k in features})
+            episodes_stats.append({k: v for k, v in all_stats[ep_idx].items() if k in features})
     stats = aggregate_stats(episodes_stats)
     # tasks
     tasks = []
     for ds in datasets:
-        tasks.extend(ds.meta.tasks.values())
+        tasks.extend(get_task_strings(ds.meta))
     tasks = {i: task for i, task in enumerate(tasks)}
     tasks_reversed = {v: k for k, v in tasks.items()}
 
@@ -151,10 +156,13 @@ def create_av_aloha_dataset_from_lerobot(
     # iterate through dataset
     episode_idx = 0
     for dataset in datasets:
+        # v3.0 no longer exposes episode_data_index, so rebuild the frame ranges
+        # of the selected episodes (contiguous over the selection, as before).
+        episode_data_index = get_lerobot_episode_data_index(dataset)
         for i in range(dataset.num_episodes):
             print(f"Converting episode {episode_idx}...")
-            from_idx = dataset.episode_data_index['from'][i]
-            to_idx = dataset.episode_data_index['to'][i]
+            from_idx = episode_data_index['from'][i]
+            to_idx = episode_data_index['to'][i]
             subset = Subset(dataset, range(from_idx, to_idx))
             dataloader = DataLoader(subset, batch_size=16, shuffle=False, num_workers=8)
             data = []
