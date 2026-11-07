@@ -27,7 +27,7 @@ Install additional dependencies:
 
 ```bash
 pip install asyncio numba google-cloud-firestore
-pip install git+https://github.com/huggingface/lerobot.git@483be9aac217c2d8ef16982490f22b2ad091ab46
+pip install lerobot==0.6.0
 pip install git+https://github.com/ian-chuang/aiortc.git@91cdb627b2510dba80786f9236277f103617c87a
 ```
 

@@ -5,8 +5,8 @@ import datasets
 import torch
 import torch.utils
 import numpy as np
-from lerobot.common.datasets.compute_stats import aggregate_stats
-from lerobot.common.datasets.video_utils import VideoFrame
+from lerobot.datasets.compute_stats import aggregate_stats
+from lerobot.datasets.video_utils import VideoFrame
 from gym_av_aloha.datasets.av_aloha_dataset import AVAlohaDataset, ROOT
 
 # BROKEN AND SUCKS

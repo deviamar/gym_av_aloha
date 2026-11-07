@@ -6,7 +6,7 @@ def main():
     import os
     from glob import glob
     import pickle
-    from lerobot.common.datasets.lerobot_dataset import LeRobotDataset
+    from lerobot.datasets import LeRobotDataset
     import cv2
 
     env = "gym_av_aloha/pour-test-tube-v1"

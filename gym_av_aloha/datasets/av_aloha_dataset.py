@@ -5,21 +5,20 @@ import numpy as np
 from typing import Callable
 import gym_av_aloha
 from gym_av_aloha.common.replay_buffer import ReplayBuffer
-from lerobot.common.datasets.lerobot_dataset import LeRobotDatasetMetadata
-from lerobot.common.datasets.utils import (
+from lerobot.datasets.utils import (
     check_delta_timestamps,
     get_delta_indices,
     get_episode_data_index,
     check_timestamps_sync,
 )
-from lerobot.common.datasets.lerobot_dataset import (
+from lerobot.datasets import (
     LeRobotDataset,
     LeRobotDatasetMetadata,
 )
 from torch.utils.data import DataLoader, Subset
 from torchvision.transforms import Resize
 from tqdm import tqdm
-from lerobot.common.datasets.compute_stats import aggregate_stats
+from lerobot.datasets.compute_stats import aggregate_stats
 import shutil
 import json
 
@@ -98,16 +97,11 @@ def create_av_aloha_dataset_from_lerobot(
         image_keys.update(dataset.meta.image_keys)
     image_keys = [k for k in image_keys if k in features]
     # stats
-    episodes_stats = []
-    for dataset in datasets:
-        ep = dataset.episodes if dataset.episodes else range(dataset.num_episodes)
-        for ep_idx in ep:
-            episodes_stats.append({k: v for k, v in dataset.meta.episodes_stats[ep_idx].items() if k in features})
-    stats = aggregate_stats(episodes_stats)
+    stats = aggregate_stats([{k: v for k, v in dataset.meta.stats.items() if k in features} for dataset in datasets])
     # tasks
     tasks = []
     for ds in datasets:
-        tasks.extend(ds.meta.tasks.values())
+        tasks.extend(ds.meta.tasks.index.tolist())
     tasks = {i: task for i, task in enumerate(tasks)}
     tasks_reversed = {v: k for k, v in tasks.items()}
 
@@ -262,7 +256,7 @@ class AVAlohaDataset(torch.utils.data.Dataset):
         self.length = sum([self.replay_buffer.episode_lengths[i] for i in self.episodes])
 
         # add task index to delta timestamps
-        if 'task_index' in self.features:
+        if self.delta_timestamps is not None and 'task_index' in self.features:
             self.delta_timestamps['task_index'] = [0]  
 
         # from and to indices for episodes

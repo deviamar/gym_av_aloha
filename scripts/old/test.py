@@ -3,7 +3,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 from gym_av_aloha.datasets.av_aloha_dataset import AVAlohaDataset
 import imageio
-from lerobot.common.datasets.sampler import EpisodeAwareSampler
+from lerobot.datasets.sampler import EpisodeAwareSampler
 
 # AVALOHADataset Test
 delta_timestamps = {

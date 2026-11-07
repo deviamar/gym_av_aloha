@@ -4,7 +4,7 @@ from tqdm import tqdm
 from gym_av_aloha.datasets.av_aloha_dataset import AVAlohaDataset
 from gym_av_aloha.datasets.multi_av_aloha_dataset import MultiAVAlohaDataset
 import imageio
-from lerobot.common.datasets.sampler import EpisodeAwareSampler
+from lerobot.datasets.sampler import EpisodeAwareSampler
 
 # PUSHT AVALOHADataset
 

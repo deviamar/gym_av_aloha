@@ -9,7 +9,7 @@ from gym_av_aloha.utils.dataset_utils import interpolate_data
 from gym_av_aloha.scripts.teleoperate import TeleopEnv
 from gym_av_aloha.env.sim_config import SIM_DT
 
-from lerobot.common.datasets.lerobot_dataset import LeRobotDataset
+from lerobot.datasets import LeRobotDataset
 
 import time
 import os

@@ -1,5 +1,5 @@
 import time
-from lerobot.common.datasets.lerobot_dataset import (
+from lerobot.datasets import (
     LeRobotDataset,
     LeRobotDatasetMetadata,
 )
